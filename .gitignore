@@ -1,0 +1,6 @@
+.clang-format
+cmake
+cmake-build-debug
+build-win
+.idea
+*.iml
