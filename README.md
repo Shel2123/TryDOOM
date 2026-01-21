@@ -1,3 +1,5 @@
+needs [XQuartz](https://www.xquartz.org/) or smth similar to run on macOS
+
 build for windows on macOS
 
 
