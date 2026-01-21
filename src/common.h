@@ -5,9 +5,10 @@
 #define SCREEN_WIDTH 1024
 #define SCREEN_HEIGHT 512
 inline bool keyA = false, keyD = false, keyW = false, keyS = false,
-            keyRight = false, keyLeft = false;
+            keyRight = false, keyLeft = false, keyO = false;
 inline float deltaTime = 0.0f;
 inline float lastTime = 0.0f;
+inline bool fpsToggleRequested = false;
 
 struct Player
 {
@@ -31,23 +32,17 @@ struct Player
   }
 };
 
-struct Map {
-    int x = 8;
-    int y = 11;
-    static constexpr int size = 88;
-    int worldMap[size] = {
-        1, 1, 1, 1, 1, 1, 1, 1,
-        1, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 1, 1, 0, 0, 1,
-        1, 0, 0, 1, 1, 0, 0, 1,
-        1, 0, 0, 1, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 1, 1, 1,
-        1, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 1, 0, 0, 0, 0, 1,
-        1, 0, 1, 1, 1, 1, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 1,
-        1, 1, 1, 1, 1, 1, 1, 1,
-    };
+struct Map
+{
+  int x = 8;
+  int y = 11;
+  static constexpr int size = 88;
+  int worldMap[size] = {
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0,
+    0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0,
+    0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0,
+    1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  };
 };
 
 inline Player player{};

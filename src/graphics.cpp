@@ -5,6 +5,8 @@
 #include <cmath>
 #include "renderer2D.h"
 
+#include <ostream>
+
 namespace gfx
 {
   RayStep initHorizontal(const float raRad, const float px, const float py)
@@ -14,7 +16,7 @@ namespace gfx
     const float cosA = cos(raRad);
     constexpr auto cell = static_cast<float>(Map::size);
 
-    // Ray perfectly horizontal -> no horizontal grid intersections
+    // ray perfectly horizontal -> no horizontal grid intersections
     if(fabs(sinA) < 1e-6f)
       {
         s.rx = px;
@@ -99,16 +101,17 @@ namespace gfx
 
   static void drawBackground(const Viewport &v)
   {
+    const auto x0 = static_cast<float>(v.x0);
+    const auto y0 = static_cast<float>(v.y0);
+    const auto x1 = static_cast<float>(v.x0 + v.w);
+    const float yMid = y0 + static_cast<float>(v.h) * 0.5f;
+    const auto y1 = static_cast<float>(v.y0 + v.h);
+
     // top half
-    gRenderer2D->pushQuad(static_cast<float>(v.x0), static_cast<float>(v.y0),
-                          static_cast<float>(v.x0 + v.w),
-                          static_cast<float>(v.y0 + v.h / 2), 0.f, 1.f, 1.f);
+    gRenderer2D->pushQuad(x0, y0, x1, yMid, 0.f, 1.f, 1.f);
 
     // bottom half
-    gRenderer2D->pushQuad(static_cast<float>(v.x0),
-                          static_cast<float>(v.y0 + v.h / 2),
-                          static_cast<float>(v.x0 + v.w),
-                          static_cast<float>(v.y0 + v.h), 0.f, 0.f, 1.f);
+    gRenderer2D->pushQuad(x0, yMid, x1, y1, 0.f, 0.f, 1.f);
   }
 
   static float rayStepDeg(const float fovDeg, const int numRays)
@@ -147,7 +150,7 @@ namespace gfx
   }
 
   static RayHit chooseNearest(const RayHit &h, const RayHit &v)
-  { return (v.dist < h.dist) ? v : h; }
+  { return v.dist < h.dist ? v : h; }
 
   static RayHit castRay(const Map &map, const Player &player, float raDeg)
   {
@@ -165,8 +168,9 @@ namespace gfx
     RayHit vh = marchToWall(map, vs, maxDof, px, py);
     vh.vertical = true;
 
-    RayHit best = chooseNearest(hh, vh);
-    best.vertical = (best.dist == vh.dist);
+    const bool useVertical = vh.dist <= hh.dist;
+    RayHit best = useVertical ? vh : hh;
+    best.vertical = useVertical;
     return best;
   }
 
@@ -182,18 +186,19 @@ namespace gfx
 
   static void
   drawColumn3D(const Viewport &v, const int r, const int numRays,
-               const float lineH, const float lineOff, const bool vertical)
+               const float lineH, const float lineOff, const float d)
   {
-    const float c = vertical ? 0.7f : 1.0f;
+    constexpr float k = 0.00005f;
+    const float shade = 1.0f / (1.0f + k * d * d);
 
     const float colW = columnWidth(v, numRays);
-    const float x0 = static_cast<float>(v.x0) + r * colW;
+    const float x0 = static_cast<float>(v.x0) + static_cast<float>(r) * colW;
     const float x1 = x0 + colW;
 
     const float y0 = static_cast<float>(v.y0) + lineOff;
     const float y1 = y0 + lineH;
 
-    gRenderer2D->pushQuad(x0, y0, x1, y1, c, c, c);
+    gRenderer2D->pushQuad(x0, y0, x1, y1, shade, shade, shade);
   }
 
   static void projectAndDrawColumn(const Viewport &v, const float fovDeg,
@@ -203,12 +208,12 @@ namespace gfx
     const float pp = projPlaneDist(v, fovDeg);
     const float d = correctedDistance(player, hit);
 
-    float lineH = (Map::size * pp) / d;
+    float lineH = Map::size * pp / d;
     lineH = std::min(lineH, static_cast<float>(v.h));
 
     const float lineOff = (static_cast<float>(v.h) * 0.5f) - (lineH * 0.5f);
 
-    drawColumn3D(v, r, numRays, lineH, lineOff, hit.vertical);
+    drawColumn3D(v, r, numRays, lineH, lineOff, d);
   }
 
   void Raycaster::draw(const Map &map, const Player &player) const
@@ -216,29 +221,35 @@ namespace gfx
     const auto &[fovDeg, numRays, view, drawDebugRays] = settings_;
     drawBackground(view);
 
-    float ra = fixAngleDeg(player.a + fovDeg * 0.5f);
-    const float step = -rayStepDeg(fovDeg, numRays);
+    const float pp = projPlaneDist(view, fovDeg);
+    const float colW = columnWidth(view, numRays);
 
     for(int r = 0; r < numRays; ++r)
       {
+        // screenX: margin form the center of column to the center of screen
+        const float screenX = (static_cast<float>(r) + 0.5f) * colW
+                              - static_cast<float>(view.w) * 0.5f;
+
+        // ray angle for this column
+        const float ra = fixAngleDeg(player.a - radToDeg(atan(screenX / pp)));
+
         const RayHit hit = castRay(map, player, ra);
 
-        if (drawDebugRays) {
-            drawRay2D(player, hit);
-        }
-        projectAndDrawColumn(view, fovDeg, r, numRays, player, hit);
+        if(drawDebugRays)
+          drawRay2D(player, hit);
 
-        ra = fixAngleDeg(ra + step);
+        projectAndDrawColumn(view, fovDeg, r, numRays, player, hit);
       }
   }
+
 }
 
-void drawRays2D(const gfx::Viewport& view, const bool drawDebugRays)
+void drawRays2D(const gfx::Viewport &view, const bool drawDebugRays)
 {
   static gfx::Raycaster rc{};
 
   auto s = rc.settings(); // copy prev settings
-  s.view = view;              // set viewpoint
+  s.view = view;          // set viewpoint
   s.drawDebugRays = drawDebugRays;
   rc.setSettings(s);
 
@@ -248,7 +259,6 @@ void drawRays2D(const gfx::Viewport& view, const bool drawDebugRays)
 // old api
 void drawRays2D()
 {
-  constexpr gfx::Viewport defaultView{};   // x0=526,y0=0,w=480,h=320
+  constexpr gfx::Viewport defaultView{}; // x0=526,y0=0,w=480,h=320
   drawRays2D(defaultView, true);
 }
-

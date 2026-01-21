@@ -1,5 +1,7 @@
+################### WINDOWS BUILD ####################
+
 #cmake_minimum_required(VERSION 4.1)
-#project(TryDOOM LANGUAGES C CXX)
+#project(TryDOOM LANGUAGES CXX)
 #
 #set(CMAKE_CXX_STANDARD 17)
 #set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,54 +19,52 @@
 #        src/graphics.h
 #        src/helpers.cpp
 #        src/helpers.h
+#        src/renderer2D.h
+#        src/logger.h
+#        src/logger.cpp
+#        src/app.h
+#        src/app.cpp
+#        src/input.h
+#        src/services.h
+#        src/scene.h
+#        src/scene_stack.h
+#        src/game_scene.h
+#        src/game_scene.cpp
+#        src/pause_scene.cpp
+#        src/map_select_scene.cpp
 #)
 #
-## --- OpenGL ---
-#find_package(OpenGL REQUIRED)
-#target_link_libraries(TryDOOM PRIVATE OpenGL::GL)
+#find_package(SDL3 CONFIG REQUIRED)
+#find_package(glad CONFIG REQUIRED)
 #
-## --- FreeGLUT: build it from source, statically ---
-#include(FetchContent)
-#
-#FetchContent_Declare(freeglut
-#        GIT_REPOSITORY https://github.com/freeglut/freeglut.git
-#        GIT_TAG v3.8.0
+#target_link_libraries(TryDOOM PRIVATE
+#        SDL3::SDL3
+#        glad::glad
 #)
 #
-#set(FREEGLUT_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-#set(FREEGLUT_BUILD_STATIC_LIBS ON  CACHE BOOL "" FORCE)
-#set(FREEGLUT_BUILD_DEMOS OFF       CACHE BOOL "" FORCE)
+#if (WIN32)
+#    target_link_libraries(TryDOOM PRIVATE opengl32)
 #
-#FetchContent_MakeAvailable(freeglut)
+#    target_link_libraries(TryDOOM PRIVATE user32 gdi32 winmm imm32 version setupapi)
 #
-#target_include_directories(TryDOOM PRIVATE
-#        ${freeglut_SOURCE_DIR}/include
-#)
-#
-#if(TARGET freeglut_static)
-#    target_link_libraries(TryDOOM PRIVATE freeglut_static)
-#    target_compile_definitions(TryDOOM PRIVATE FREEGLUT_STATIC)
-#elseif(TARGET freeglut)
-#    target_link_libraries(TryDOOM PRIVATE freeglut)
+#    # if(TARGET SDL3::SDL3main)
+#    #   target_link_libraries(TryDOOM PRIVATE SDL3::SDL3main)
+#    # endif()
 #else()
-#    message(FATAL_ERROR "freeglut target not found after FetchContent")
+#    find_package(OpenGL REQUIRED)
+#    target_link_libraries(TryDOOM PRIVATE OpenGL::GL)
 #endif()
 #
-#
-## --- Make the EXE more self-contained when using MinGW ---
-#if(MINGW)
-#    target_compile_options(TryDOOM PRIVATE -ffunction-sections -fdata-sections)
+#if (MINGW)
 #    target_link_options(TryDOOM PRIVATE
-#            -Wl,--gc-sections
+#            -static
 #            -static-libgcc
 #            -static-libstdc++
 #    )
-#    # Optional: strip symbols in Release for smaller exe
-#    target_link_options(TryDOOM PRIVATE $<$<CONFIG:Release>:-s>)
 #endif()
 
 
-
+#################### MACOS BUILD ######################
 cmake_minimum_required(VERSION 4.1)
 project(TryDOOM LANGUAGES CXX)
 
@@ -88,7 +88,15 @@ add_executable(TryDOOM
         src/logger.h
         src/logger.cpp
         src/app.h
-        src/app.cpp)
+        src/app.cpp
+        src/input.h
+        src/services.h
+        src/scene.h
+        src/scene_stack.h
+        src/game_scene.h
+        src/game_scene.cpp
+        src/pause_scene.cpp
+        src/map_select_scene.cpp)
 
 find_package(OpenGL REQUIRED)
 target_link_libraries(TryDOOM PRIVATE OpenGL::GL)

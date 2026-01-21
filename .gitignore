@@ -4,3 +4,4 @@ cmake-build-debug
 build-win
 .idea
 *.iml
+cmake-build-windows-release

@@ -37,7 +37,7 @@ namespace gfx
     struct Settings
     {
       float fovDeg = 90.0f;
-      int numRays = 640;
+      int numRays = 1000;
       Viewport view{};
       bool drawDebugRays = true;
     };
@@ -57,4 +57,4 @@ namespace gfx
 
 }
 
-void drawRays2D(const gfx::Viewport& view, bool drawDebugRays);
+void drawRays2D(const gfx::Viewport &view, bool drawDebugRays);

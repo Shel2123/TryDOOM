@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <cstdlib>
 #include <cstdio>
 
 #include <glad/glad.h>
@@ -17,7 +18,7 @@ struct Mat4
 
 inline Mat4 ortho(const float l, const float r, const float b, const float t)
 {
-  // Column-major
+  // column-major
   Mat4 o{};
   o.m[0] = 2.0f / (r - l);
   o.m[5] = 2.0f / (t - b);

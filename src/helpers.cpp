@@ -3,6 +3,7 @@
 namespace gfx
 {
   float degToRad(const float a) noexcept { return a * (kPi / 180.0f); }
+  float radToDeg(const float a) noexcept { return a * (180.0f / kPi); }
 
   float fixAngleDeg(float a) noexcept
   {

@@ -1,7 +1,12 @@
 #pragma once
 #include <SDL3/SDL.h>
+#include <memory>
 
 class Renderer2D;
+
+#include "input.h"
+#include "services.h"
+#include "scene_stack.h"
 
 struct AppConfig
 {
@@ -15,7 +20,7 @@ struct AppConfig
   const char *title = "Wolf3D on GPU";
   int glMajor = 3;
   int glMinor = 3;
-  bool vsync = false;
+  bool vsync = true;
 };
 
 class App
@@ -24,15 +29,15 @@ public:
   bool init(const AppConfig &cfg);
   void run();
   void shutdown();
+  void switchFPSCounter();
 
 private:
   void updateSizes();
   void processEvents();
-  static void pollInput();
   float computeDt();
-  static void update(float dt);
   void render() const;
   void refreshFramebufferSize();
+  void updateFPSCounter(double dt);
 
   AppConfig config{};
   SDL_Window *window = nullptr;
@@ -41,6 +46,15 @@ private:
 
   bool fullscreen_ = false;
 
+  struct FPS
+  {
+    bool status = false;
+    double fpsAccum_ = 0.0;
+    int fpsFrames_ = 0;
+    double fpsValue_ = 0.0;
+  };
+  FPS fpsCounter_;
+
   int fbW_ = 0;
   int fbH_ = 0;
 
@@ -48,4 +62,8 @@ private:
   double freq = 0.0;
 
   Renderer2D *renderer = nullptr;
+
+  Input input_;
+  std::unique_ptr<Services> services_;
+  std::unique_ptr<SceneStack> scenes_;
 };

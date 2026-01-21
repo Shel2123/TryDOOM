@@ -2,18 +2,6 @@
 
 #include <GL/glut.h>
 
-void KeyDown(const unsigned char key, int x, int y)
-{
-  if(key == 'a')
-    keyA = true;
-  if(key == 'd')
-    keyD = true;
-  if(key == 'w')
-    keyW = true;
-  if(key == 's')
-    keyS = true;
-}
-
 void KeyUp(const unsigned char key, int x, int y)
 {
   if(key == 'a')
@@ -24,6 +12,22 @@ void KeyUp(const unsigned char key, int x, int y)
     keyW = false;
   if(key == 's')
     keyS = false;
+  if(key == 'o')
+    keyO = false;
+}
+
+void KeyDown(const unsigned char key, int x, int y)
+{
+  if(key == 'a')
+    keyA = true;
+  if(key == 'd')
+    keyD = true;
+  if(key == 'w')
+    keyW = true;
+  if(key == 's')
+    keyS = true;
+  if(key == 'o')
+    keyO = true;
 }
 
 void SpecialDown(const int key, int x, int y)
@@ -83,4 +87,11 @@ void Update(const float dt)
       player.x -= rx * moveSpeed * dt;
       player.y -= ry * moveSpeed * dt;
     }
+  static bool prevO = false;
+
+  if(keyO && !prevO)
+    {
+      fpsToggleRequested = true;
+    }
+  prevO = keyO;
 }
