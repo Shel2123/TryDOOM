@@ -5,3 +5,4 @@ build-win
 .idea
 *.iml
 cmake-build-windows-release
+.claude

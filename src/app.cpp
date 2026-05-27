@@ -1,233 +1,227 @@
+#include "app.h"
+#include "raycaster.h"
+
 #include <glad/glad.h>
+#include <algorithm>
 #include <cstdio>
 
-#include "renderer2D.h"
-#include "logger.h"
-#include "app.h"
-
-#include "common.h"
-#include "map_select_scene.h"
-
-bool App::init(const AppConfig &cfg)
+namespace
 {
-  config = cfg;
 
-  if(!SDL_Init(SDL_INIT_VIDEO))
+void print_gl_info()
+{
+    auto safe_str = [](GLenum name) -> const char * {
+        const auto *s = glGetString(name);
+        return s ? reinterpret_cast<const char *>(s) : "<null>";
+    };
+
+    std::printf("GL_VENDOR   : %s\n", safe_str(GL_VENDOR));
+    std::printf("GL_RENDERER : %s\n", safe_str(GL_RENDERER));
+    std::printf("GL_VERSION  : %s\n", safe_str(GL_VERSION));
+    std::printf("GLSL        : %s\n", safe_str(GL_SHADING_LANGUAGE_VERSION));
+}
+
+} // namespace
+
+App::~App()
+{
+    renderer_.reset();
+
+    if (gl_ctx_)
+        SDL_GL_DestroyContext(gl_ctx_);
+    if (window_)
+        SDL_DestroyWindow(window_);
+
+    SDL_Quit();
+}
+
+bool App::init()
+{
+    if (!SDL_Init(SDL_INIT_VIDEO))
     {
-      std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
-      return false;
+        std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+        return false;
     }
 
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
-                      SDL_GL_CONTEXT_PROFILE_CORE);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, config.glMajor);
-  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, config.glMinor);
-  SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
 
-  SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "1");
-
-  window = SDL_CreateWindow(config.title, config.width, config.height,
-                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-
-  if(!window)
+    window_ = SDL_CreateWindow(kTitle, kWidth, kHeight,
+                               SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    if (!window_)
     {
-      std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
-      return false;
+        std::fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+        return false;
     }
 
-  SDL_SetWindowMinimumSize(window, config.width, config.height);
+    SDL_SetWindowMinimumSize(window_, kWidth, kHeight);
 
-  ctx = SDL_GL_CreateContext(window);
-  if(!ctx)
+    gl_ctx_ = SDL_GL_CreateContext(window_);
+    if (!gl_ctx_)
     {
-      std::fprintf(stderr, "SDL_GL_CreateContext failed: %s\n",
-                   SDL_GetError());
-      return false;
+        std::fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        return false;
     }
 
-  if(!SDL_GL_MakeCurrent(window, ctx))
+    if (!SDL_GL_MakeCurrent(window_, gl_ctx_))
     {
-      std::fprintf(stderr, "SDL_GL_MakeCurrent failed: %s\n", SDL_GetError());
-      return false;
+        std::fprintf(stderr, "SDL_GL_MakeCurrent failed: %s\n", SDL_GetError());
+        return false;
     }
 
-  if(!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)))
+    if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)))
     {
-      std::fprintf(stderr, "Failed to init GLAD\n");
-      return false;
+        std::fprintf(stderr, "Failed to init GLAD\n");
+        return false;
     }
 
-  refreshFramebufferSize();
-  updateSizes();
+    update_framebuffer_size();
+    SDL_GL_SetSwapInterval(1);
+    glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
 
-  SDL_GL_SetSwapInterval(config.vsync ? 1 : 0);
-  glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
+    renderer_ = std::make_unique<Renderer2D>();
+    renderer_->init();
 
-  // Renderer init
-  static Renderer2D r; // simplest owning option
-  r.init();
-  renderer = &r;
-  gRenderer2D = renderer;
+    perf_freq_ = static_cast<double>(SDL_GetPerformanceFrequency());
+    last_counter_ = SDL_GetPerformanceCounter();
 
-  freq = static_cast<double>(SDL_GetPerformanceFrequency());
-  lastCounter = SDL_GetPerformanceCounter();
+    print_gl_info();
 
-  Logger::PrintGLInfo();
-
-  running = true;
-
-  // services + scene stack
-  services_ = std::make_unique<Services>(
-    Services{*renderer, input_, fbW_, fbH_, fullscreen_,
-             [this]() { running = false; }});
-
-  scenes_ = std::make_unique<SceneStack>(*services_);
-  scenes_->push(std::make_unique<MapSelectScene>(*services_, *scenes_));
-  scenes_->commit();
-
-  return true;
+    running_ = true;
+    return true;
 }
 
 void App::run()
 {
-  while(running)
+    while (running_)
     {
-      processEvents();
+        process_events();
 
-      input_.update();
+        const Uint64 now = SDL_GetPerformanceCounter();
+        const auto dt = static_cast<float>(
+            static_cast<double>(now - last_counter_) / perf_freq_);
+        last_counter_ = now;
 
-      // keep old global keys alive for existing Update(dt)
-      keyW = input_.down(SDL_SCANCODE_W);
-      keyA = input_.down(SDL_SCANCODE_A);
-      keyS = input_.down(SDL_SCANCODE_S);
-      keyD = input_.down(SDL_SCANCODE_D);
-      keyLeft = input_.down(SDL_SCANCODE_LEFT);
-      keyRight = input_.down(SDL_SCANCODE_RIGHT);
-      keyO = input_.down(SDL_SCANCODE_O);
+        update(dt);
 
-      const float dt = computeDt();
-
-      scenes_->update(dt);
-
-      if(fpsToggleRequested)
+        if (show_fps_)
         {
-          fpsToggleRequested = false;
-          switchFPSCounter();
+            fps_accum_ += dt;
+            ++fps_frames_;
+            if (fps_accum_ >= 0.25)
+            {
+                const double fps = fps_frames_ / fps_accum_;
+                fps_accum_ = 0.0;
+                fps_frames_ = 0;
+
+                char title[256];
+                std::snprintf(title, sizeof(title), "%s | FPS: %.1f", kTitle, fps);
+                SDL_SetWindowTitle(window_, title);
+            }
         }
 
-      updateFPSCounter(dt);
-      render();
-
-      SDL_GL_SwapWindow(window);
+        render();
+        SDL_GL_SwapWindow(window_);
     }
+}
+
+void App::process_events()
+{
+    SDL_Event e;
+    while (SDL_PollEvent(&e))
+    {
+        if (e.type == SDL_EVENT_QUIT)
+        {
+            running_ = false;
+            return;
+        }
+
+        switch (e.type)
+        {
+        case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+        case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+        case SDL_EVENT_WINDOW_MAXIMIZED:
+        case SDL_EVENT_WINDOW_RESTORED:
+        case SDL_EVENT_WINDOW_RESIZED:
+            update_framebuffer_size();
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void App::update(float dt)
+{
+    input_.update();
+
+    if (input_.pressed(SDL_SCANCODE_ESCAPE))
+    {
+        running_ = false;
+        return;
+    }
+
+    if (input_.pressed(SDL_SCANCODE_O))
+    {
+        show_fps_ = !show_fps_;
+        if (!show_fps_)
+            SDL_SetWindowTitle(window_, kTitle);
+    }
+
+    if (input_.pressed(SDL_SCANCODE_L))
+    {
+        const int step = num_rays_ < 6 ? 1 : num_rays_ < 51 ? 5 : 50;
+        num_rays_ = std::clamp(num_rays_ + step, 1, 5000);
+    }
+    if (input_.pressed(SDL_SCANCODE_K))
+    {
+        const int step = num_rays_ <= 6 ? 1 : num_rays_ <= 51 ? 5 : 50;
+        num_rays_ = std::clamp(num_rays_ - step, 1, 5000);
+    }
+
+    player_.update(input_, dt);
 }
 
 void App::render() const
 {
-  glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT);
+    renderer_->begin_frame(fb_w_, fb_h_);
 
-  renderer->beginFrame(fbW_, fbH_);
-
-  scenes_->render();
-
-  renderer->flush();
-}
-
-void App::shutdown()
-{
-  scenes_.reset();
-  services_.reset();
-
-  if(ctx)
+    if (!fullscreen_)
     {
-      SDL_GL_DestroyContext(ctx);
-      ctx = nullptr;
+        draw_minimap(*renderer_);
+        draw_player_2d(*renderer_, player_);
+
+        constexpr Viewport view_win{};
+        cast_and_draw(*renderer_, player_, view_win, num_rays_, true);
     }
-  if(window)
+    else
     {
-      SDL_DestroyWindow(window);
-      window = nullptr;
-    }
-  SDL_Quit();
-}
-
-void App::processEvents()
-{
-  SDL_Event e;
-  while(SDL_PollEvent(&e))
-    {
-      if(e.type == SDL_EVENT_QUIT)
-        running = false;
-
-      if(e.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN
-         || e.type == SDL_EVENT_WINDOW_LEAVE_FULLSCREEN
-         || e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED
-         || e.type == SDL_EVENT_WINDOW_MAXIMIZED
-         || e.type == SDL_EVENT_WINDOW_RESTORED
-         || e.type == SDL_EVENT_WINDOW_RESIZED
-         || e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
-        {
-          updateSizes();
-        }
-    }
-}
-
-float App::computeDt()
-{
-  const Uint64 now = SDL_GetPerformanceCounter();
-  const auto dt = static_cast<float>((now - lastCounter) / freq);
-  lastCounter = now;
-  return dt;
-}
-
-void App::refreshFramebufferSize()
-{
-  SDL_GetWindowSizeInPixels(window, &fbW_, &fbH_);
-  if(fbW_ <= 0 || fbH_ <= 0)
-    {
-      fbW_ = config.width;
-      fbH_ = config.height;
-    }
-}
-
-void App::switchFPSCounter() { fpsCounter_.status = !fpsCounter_.status; }
-
-void App::updateFPSCounter(const double dt)
-{
-  if(fpsCounter_.status)
-    {
-      fpsCounter_.fpsAccum_ += dt;
-      fpsCounter_.fpsFrames_++;
-
-      if(fpsCounter_.fpsAccum_ >= 0.25)
-        {
-          fpsCounter_.fpsValue_
-            = fpsCounter_.fpsFrames_ / fpsCounter_.fpsAccum_;
-          fpsCounter_.fpsAccum_ = 0.0;
-          fpsCounter_.fpsFrames_ = 0;
-
-          char title[256];
-          std::snprintf(title, sizeof(title), "%s | FPS: %.1f", config.title,
-                        fpsCounter_.fpsValue_);
-          SDL_SetWindowTitle(window, title);
-        }
-    }
-}
-
-void App::updateSizes()
-{
-  SDL_GetWindowSizeInPixels(window, &fbW_, &fbH_);
-
-  if(fbW_ <= 0 || fbH_ <= 0)
-    SDL_GetWindowSize(window, &fbW_, &fbH_);
-
-  if(fbW_ <= 0 || fbH_ <= 0)
-    {
-      fbW_ = config.width;
-      fbH_ = config.height;
+        const Viewport view_full{0, 0, fb_w_, fb_h_};
+        cast_and_draw(*renderer_, player_, view_full, num_rays_, false);
     }
 
-  fullscreen_ = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN
-                 || SDL_GetWindowFlags(window) & SDL_WINDOW_MAXIMIZED)
-                != 0;
+    renderer_->flush();
+}
+
+void App::update_framebuffer_size()
+{
+    SDL_GetWindowSizeInPixels(window_, &fb_w_, &fb_h_);
+
+    if (fb_w_ <= 0 || fb_h_ <= 0)
+        SDL_GetWindowSize(window_, &fb_w_, &fb_h_);
+
+    if (fb_w_ <= 0 || fb_h_ <= 0)
+    {
+        fb_w_ = kWidth;
+        fb_h_ = kHeight;
+    }
+
+    const auto flags = SDL_GetWindowFlags(window_);
+    fullscreen_ = (flags & SDL_WINDOW_FULLSCREEN) != 0
+                  || (flags & SDL_WINDOW_MAXIMIZED) != 0;
 }
